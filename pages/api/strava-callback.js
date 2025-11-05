@@ -1,17 +1,17 @@
+// /pages/api/strava-callback.js
 export default async function handler(req, res) {
-  const { code } = req.query;
-
-  if (!code) {
-    return res.status(400).json({ error: "Missing authorization code" });
-  }
-
   try {
-    // Intercambiamos el "code" por un access_token
+    const { code } = req.query;
+    if (!code) {
+      return res.status(400).send("Missing Strava authorization code");
+    }
+
+    // Intercambio del código por el token de acceso
     const response = await fetch("https://www.strava.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_id: process.env.STRAVA_CLIENT_ID || "184014",
+        client_id: process.env.STRAVA_CLIENT_ID,
         client_secret: process.env.STRAVA_CLIENT_SECRET,
         code,
         grant_type: "authorization_code",
@@ -19,25 +19,29 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+    const athlete = data.athlete;
 
-    // Si falla, devolvemos el error
-    if (!data.access_token) {
-      return res.status(400).json({ error: "Bad Request", details: data });
+    if (!athlete) {
+      return res.status(500).send("No athlete data received from Strava");
     }
 
-    // ✅ Datos del atleta
-    const athlete = data.athlete;
-    const redirectBase = "https://www.alamedatrailteam.com/pagina-en-blanco"; // <-- cambia por la página VIP real
+    // Nombre y foto del atleta
+    const name = `${athlete.firstname || ""} ${athlete.lastname || ""}`.trim();
+    const pic = athlete.profile_medium || athlete.profile || "";
+    const id = athlete.id;
 
-    // Creamos la URL de retorno con parámetros legibles
-    const redirectUrl = `${redirectBase}?strava=ok&name=${encodeURIComponent(
-      athlete.firstname + " " + athlete.lastname
-    )}&id=${athlete.id}&pic=${encodeURIComponent(athlete.profile_medium)}`;
+    // URL base de retorno
+    const returnUrl = `https://www.alamedatrailteam.com/pagina-en-blanco/?strava=ok&name=${encodeURIComponent(
+      name
+    )}&id=${id}&pic=${encodeURIComponent(pic)}`;
 
-    // Redirigimos al usuario a la web VIP
-    return res.redirect(302, redirectUrl);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error", details: err.message });
+    // 🔁 Redirigir en la misma pestaña (no nueva)
+    res.writeHead(302, {
+      Location: returnUrl,
+    });
+    res.end();
+  } catch (error) {
+    console.error("❌ Error en callback Strava:", error);
+    res.status(500).send("Error processing Strava callback");
   }
 }
