@@ -1,20 +1,17 @@
 export default async function handler(req, res) {
-  const { code, scope, error } = req.query;
-
-  if (error) {
-    return res.status(400).json({ error: "Authorization denied by user" });
-  }
+  const { code } = req.query;
 
   if (!code) {
     return res.status(400).json({ error: "Missing authorization code" });
   }
 
   try {
+    // Intercambiamos el "code" por un access_token
     const response = await fetch("https://www.strava.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_id: process.env.STRAVA_CLIENT_ID,
+        client_id: process.env.STRAVA_CLIENT_ID || "184014",
         client_secret: process.env.STRAVA_CLIENT_SECRET,
         code,
         grant_type: "authorization_code",
@@ -23,18 +20,24 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.message || "Failed to exchange code for token");
+    // Si falla, devolvemos el error
+    if (!data.access_token) {
+      return res.status(400).json({ error: "Bad Request", details: data });
     }
 
-    return res.status(200).json({
-      message: "✅ Strava authorization successful",
-      athlete: data.athlete,
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-    });
+    // ✅ Datos del atleta
+    const athlete = data.athlete;
+    const redirectBase = "https://www.alamedatrailteam.com/pagina-en-blanco"; // <-- cambia por la página VIP real
+
+    // Creamos la URL de retorno con parámetros legibles
+    const redirectUrl = `${redirectBase}?strava=ok&name=${encodeURIComponent(
+      athlete.firstname + " " + athlete.lastname
+    )}&id=${athlete.id}&pic=${encodeURIComponent(athlete.profile_medium)}`;
+
+    // Redirigimos al usuario a la web VIP
+    return res.redirect(302, redirectUrl);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Server error", details: err.message });
   }
 }
