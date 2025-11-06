@@ -1,6 +1,5 @@
-// /api/callback.ts
+// /pages/api/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -12,6 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const code = req.query.code as string;
 
+    // Intercambio del código por tokens
     const response = await fetch("https://www.strava.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -24,22 +24,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     const data = await response.json();
-    if (!data.athlete) throw new Error("No athlete data returned");
+
+    if (!data.athlete) {
+      return res.status(400).json({ error: "No athlete data returned" });
+    }
 
     const { id } = data.athlete;
 
-    const { error } = await supabase
-      .from("strava_users")
-      .upsert({
-        athlete_id: id,
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        expires_at: data.expires_at,
-        updated_at: new Date().toISOString(),
-      });
+    const { error } = await supabase.from("strava_users").upsert({
+      athlete_id: id,
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at,
+      updated_at: new Date().toISOString(),
+    });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase error:", error);
+      return res.status(500).json({ error: error.message });
+    }
 
+    res.setHeader("Content-Type", "text/plain");
     return res.status(200).send("✅ Strava connected successfully!");
   } catch (err: any) {
     console.error("Callback error:", err);
