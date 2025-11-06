@@ -1,57 +1,43 @@
-// /pages/api/sync-activities.ts
-import type { NextApiRequest, NextApiResponse } from "next";
+// /api/sync-activities.ts
+import { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // Obtener atletas guardados
-    const { data: users, error: userError } = await supabase.from("strava_users").select("*");
-    if (userError) throw userError;
+    const { data: users } = await supabase.from("strava_users").select("*");
+    if (!users || users.length === 0) {
+      return res.status(400).send("No Strava users found");
+    }
 
     for (const user of users) {
-      const activitiesRes = await fetch(
-        `https://www.strava.com/api/v3/athlete/activities?access_token=${user.access_token}`
-      );
+      const response = await fetch("https://www.strava.com/api/v3/athlete/activities", {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+      const activities = await response.json();
 
-      const activities = await activitiesRes.json();
-
-      if (!Array.isArray(activities)) continue;
-
-      // Guardar cada actividad
-      for (const act of activities) {
-        const { error: insertError } = await supabase
-          .from("strava_activities")
-          .upsert({
-            athlete_id: user.athlete_id,
-            strava_id: act.id,
-            name: act.name,
-            distance: act.distance,
-            moving_time: act.moving_time,
-            elapsed_time: act.elapsed_time,
-            total_elevation_gain: act.total_elevation_gain,
-            sport_type: act.sport_type,
-            start_date: act.start_date,
-            start_latlng: JSON.stringify(act.start_latlng || null),
-            end_latlng: JSON.stringify(act.end_latlng || null),
-            average_speed: act.average_speed,
-            max_speed: act.max_speed,
-            average_heartrate: act.average_heartrate,
-            max_heartrate: act.max_heartrate,
-            updated_at: new Date().toISOString(),
-          });
-
-        if (insertError) console.error("Error insertando actividad:", insertError);
+      for (const activity of activities) {
+        await supabase.from("strava_activities").upsert({
+          athlete_id: user.athlete_id,
+          strava_id: activity.id,
+          name: activity.name,
+          distance: activity.distance,
+          moving_time: activity.moving_time,
+          elapsed_time: activity.elapsed_time,
+          total_elevation_gain: activity.total_elevation_gain,
+          sport_type: activity.sport_type,
+          start_date: activity.start_date,
+        });
       }
     }
 
-    return res.status(200).send("✅ Actividades sincronizadas correctamente");
-  } catch (err: any) {
-    console.error("Sync error:", err);
-    return res.status(500).json({ error: err.message });
+    res.status(200).send("✅ Actividades sincronizadas correctamente");
+  } catch (err) {
+    console.error("sync error:", err);
+    res.status(500).send("Error syncing activities");
   }
 }
