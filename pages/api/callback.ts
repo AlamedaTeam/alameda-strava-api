@@ -1,5 +1,5 @@
 // /api/callback.ts
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { NextApiRequest, NextApiResponse } from "next";
 import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
@@ -8,11 +8,10 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const code = req.query.code as string;
 
-    // Intercambio del código por tokens
     const response = await fetch("https://www.strava.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -29,7 +28,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { id } = data.athlete;
 
-    // Guardar o actualizar en la tabla strava_users
     const { error } = await supabase
       .from("strava_users")
       .upsert({
