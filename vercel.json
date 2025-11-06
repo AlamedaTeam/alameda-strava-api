@@ -1,8 +1,11 @@
 {
-  "crons": [
-    {
-      "path": "/api/sync-activities",
-      "schedule": "0 5 * * *"
-    }
+  "version": 2,
+  "builds": [
+    { "src": "pages/api/**/*.ts", "use": "@vercel/node" },
+    { "src": "pages/**/*.js", "use": "@vercel/next" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/pages/api/$1.ts" },
+    { "src": "/(.*)", "dest": "/pages/$1" }
   ]
 }
