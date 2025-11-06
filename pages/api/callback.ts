@@ -1,45 +1,50 @@
-// pages/api/auth/callback.ts
-import type { NextApiRequest, NextApiResponse } from "next";
+// /api/callback.ts
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { code } = req.query;
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
 
-  if (!code) return res.status(400).json({ ok: false, error: "Missing code" });
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    const code = req.query.code as string;
 
-  const clientId = process.env.STRAVA_CLIENT_ID!;
-  const clientSecret = process.env.STRAVA_CLIENT_SECRET!;
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
+    // Intercambio del código por tokens
+    const response = await fetch("https://www.strava.com/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: process.env.STRAVA_CLIENT_ID,
+        client_secret: process.env.STRAVA_CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code",
+      }),
+    });
 
-  // 1️⃣ Intercambiar el código por tokens
-  const tokenRes = await fetch("https://www.strava.com/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      grant_type: "authorization_code",
-    }),
-  });
+    const data = await response.json();
+    if (!data.athlete) throw new Error("No athlete data returned");
 
-  const tokenData = await tokenRes.json();
+    const { id } = data.athlete;
 
-  if (!tokenData.athlete) {
-    return res.status(500).json({ ok: false, error: tokenData });
+    // Guardar o actualizar en la tabla strava_users
+    const { error } = await supabase
+      .from("strava_users")
+      .upsert({
+        athlete_id: id,
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        expires_at: data.expires_at,
+        updated_at: new Date().toISOString(),
+      });
+
+    if (error) throw error;
+
+    return res.status(200).send("✅ Strava connected successfully!");
+  } catch (err: any) {
+    console.error("Callback error:", err);
+    return res.status(500).json({ error: err.message });
   }
-
-  // 2️⃣ Guardar o actualizar en Supabase
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const { error } = await supabase.from("strava_users").upsert({
-    athlete_id: tokenData.athlete.id,
-    access_token: tokenData.access_token,
-    refresh_token: tokenData.refresh_token,
-    expires_at: tokenData.expires_at,
-  });
-
-  if (error) return res.status(500).json({ ok: false, error });
-
-  res.status(200).send("✅ Strava connected successfully!");
 }
