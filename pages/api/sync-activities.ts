@@ -1,43 +1,24 @@
 // /api/sync-activities.ts
 import { VercelRequest, VercelResponse } from "@vercel/node";
-import { createClient } from "@supabase/supabase-js";
+```)  
+y pégalo **reemplazando todo lo que hay ahora mismo** dentro del archivo  
+`pages/api/sync-activities.ts` en tu GitHub.  
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
+Luego haz esto paso a paso 👇  
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  try {
-    const { data: users } = await supabase.from("strava_users").select("*");
-    if (!users || users.length === 0) {
-      return res.status(400).send("No Strava users found");
-    }
+---
 
-    for (const user of users) {
-      const response = await fetch("https://www.strava.com/api/v3/athlete/activities", {
-        headers: { Authorization: `Bearer ${user.access_token}` },
-      });
-      const activities = await response.json();
+### ⚙️ PASOS
+1️⃣ **Guarda** → haz click en **“Commit changes”** (rama `main`).  
+2️⃣ Espera unos segundos hasta que en **Vercel → Deployments** veas que pone “✅ Ready”.  
+3️⃣ Vuelve a abrir esta URL:
+   👉 [`https://alameda-strava-api.vercel.app/api/sync-activities`](https://alameda-strava-api.vercel.app/api/sync-activities)
+4️⃣ Si todo sale bien, verás el mensaje verde ✅  
+   **“Actividades sincronizadas correctamente”**
 
-      for (const activity of activities) {
-        await supabase.from("strava_activities").upsert({
-          athlete_id: user.athlete_id,
-          strava_id: activity.id,
-          name: activity.name,
-          distance: activity.distance,
-          moving_time: activity.moving_time,
-          elapsed_time: activity.elapsed_time,
-          total_elevation_gain: activity.total_elevation_gain,
-          sport_type: activity.sport_type,
-          start_date: activity.start_date,
-        });
-      }
-    }
+5️⃣ Luego entra en Supabase → tabla `strava_activities` → dale a **🔄 Refresh**.
 
-    res.status(200).send("✅ Actividades sincronizadas correctamente");
-  } catch (err) {
-    console.error("sync error:", err);
-    res.status(500).send("Error syncing activities");
-  }
-}
+---
+
+Si después de eso sigue vacía, te diré cómo imprimir el log para ver qué devuelve Strava (por si no está trayendo actividades).  
+Avísame cuando hayas hecho el commit y lo pruebes 👇
