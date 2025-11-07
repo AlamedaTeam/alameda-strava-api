@@ -30,11 +30,11 @@ export default async function handler(req, res) {
     // Consulta actividades de esta semana
     const { data, error } = await supabase
       .from('alameda_activities')
-      .select('name, date_day, distance_km, elevation_gain_m, moving_time_min')
+      .select('name, date, distance_km, elevation_gain_m, moving_time_min')
       .eq('athlete_id', athlete_id)
-      .gte('date_day', monday.toISOString().split('T')[0])
-      .lte('date_day', sunday.toISOString().split('T')[0])
-      .order('date_day', { ascending: false })
+      .gte('date', monday.toISOString().split('T')[0])
+      .lte('date', sunday.toISOString().split('T')[0])
+      .order('date', { ascending: false })
 
     if (error) throw error
 
