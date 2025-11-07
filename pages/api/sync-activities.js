@@ -1,112 +1,99 @@
-// /api/sync-activities.js
-// Sincroniza las actividades de todos los atletas desde Strava -> Supabase
+import type { NextApiRequest, NextApiResponse } from "next";
+import { createClient } from "@supabase/supabase-js";
 
-import { createClient } from '@supabase/supabase-js';
+// 🔑 Conexión a Supabase
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-const {
-  SUPABASE_URL,
-  SUPABASE_SERVICE_KEY,
-  STRAVA_CLIENT_ID,
-  STRAVA_CLIENT_SECRET,
-} = process.env;
+// ⏱️ Formato de tiempo: pasa minutos a “1h 34min”
+const formatTime = (minutes: number): string => {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  const mm = m.toString().padStart(2, "0");
+  return h > 0 ? `${h}h ${mm}min` : `${m} min`;
+};
 
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    console.log("🚀 Sincronización Strava -> Alameda iniciada");
 
-    // 1️⃣ Leer atletas registrados
-    const { data: users, error: userErr } = await supabase
-      .from('strava_users')
-      .select('*');
+    // 1️⃣ Leer usuarios conectados
+    const { data: users, error: userError } = await supabase
+      .from("strava_users")
+      .select("*");
 
-    if (userErr) throw userErr;
-    if (!users?.length) return res.status(200).json({ ok: true, message: 'No users connected yet.' });
+    if (userError) throw userError;
+    if (!users?.length) throw new Error("No hay usuarios Strava conectados");
 
-    let total = 0;
-    for (const u of users) {
-      const token = await getValidToken(u, supabase);
-      if (!token) continue;
+    for (const user of users) {
+      console.log(`🔄 Atleta ${user.athlete_id}`);
 
-      // 2️⃣ Descargar actividades recientes
-      const acts = await fetch(
-        `https://www.strava.com/api/v3/athlete/activities?per_page=50`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      ).then(r => r.json());
+      // 2️⃣ Descargar actividades
+      const response = await fetch("https://www.strava.com/api/v3/athlete/activities", {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+      const activities = await response.json();
+      if (!Array.isArray(activities)) continue;
 
-      if (!Array.isArray(acts)) continue;
+      for (const act of activities) {
+        const distance_km = parseFloat((act.distance / 1000).toFixed(2));
+        const moving_min = Math.round(act.moving_time / 60);
+        const elapsed_min = Math.round(act.elapsed_time / 60);
+        const elevation_gain_m = Math.round(act.total_elevation_gain);
+        const pace_min_km = act.average_speed
+          ? `${Math.floor(1000 / act.average_speed / 60)}:${String(
+              Math.round((1000 / act.average_speed) % 60)
+            ).padStart(2, "0")}/km`
+          : null;
 
-      for (const a of acts) {
-        const activity = {
-          athlete_id: u.athlete_id,
-          strava_id: a.id,
-          name: a.name,
-          distance: a.distance,
-          moving_time: a.moving_time,
-          elapsed_time: a.elapsed_time,
-          total_elevation_gain: a.total_elevation_gain,
-          sport_type: a.sport_type,
-          start_date: a.start_date,
-          start_latlng: a.start_latlng?.join(',') || null,
-          end_latlng: a.end_latlng?.join(',') || null,
-          average_speed: a.average_speed,
-          max_speed: a.max_speed,
-          elev_high: a.elev_high,
-          elev_low: a.elev_low,
-          has_heartrate: a.has_heartrate,
-          average_heartrate: a.average_heartrate,
-          max_heartrate: a.max_heartrate,
-          updated_at: new Date().toISOString(),
-        };
+        const dateObj = new Date(act.start_date);
+        const date = `${String(dateObj.getDate()).padStart(2, "0")}-${String(
+          dateObj.getMonth() + 1
+        ).padStart(2, "0")}-${dateObj.getFullYear()}`;
 
-        await supabase
-          .from('strava_activities')
-          .upsert(activity, { onConflict: 'strava_id' });
-        total++;
+        // 3️⃣ Insertar en strava_activities
+        await supabase.from("strava_activities").upsert({
+          athlete_id: user.athlete_id,
+          activity_id: act.id,
+          name: act.name,
+          sport_type: act.sport_type,
+          distance_km: `${distance_km} km`,
+          moving_time_min: formatTime(moving_min),
+          elapsed_time_min: formatTime(elapsed_min),
+          elevation_gain_m: `+${elevation_gain_m} m`,
+          pace_min_km,
+          avg_speed_kmh: (act.average_speed * 3.6).toFixed(1),
+          start_date: act.start_date,
+          timezone: act.timezone,
+          date,
+          platform: "Strava",
+          description: act.description || null,
+        });
+
+        // 4️⃣ Insertar en formato Alameda Team
+        await supabase.from("alameda_activities").upsert({
+          athlete_id: user.athlete_id,
+          activity_id: act.id,
+          platform: "Strava",
+          name: act.name,
+          date,
+          distance_km,
+          elevation_gain_m,
+          moving_time_min: formatTime(moving_min),
+          elapsed_time_min: formatTime(elapsed_min),
+          pace_min_km,
+        });
       }
     }
 
-    return res.status(200).json({ ok: true, total });
-  } catch (err) {
-    console.error('sync error', err);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-}
-
-/* === Token refresher === */
-async function getValidToken(user, supabase) {
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    if (user.expires_at > now) return user.access_token;
-
-    // refresh
-    const res = await fetch('https://www.strava.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: STRAVA_CLIENT_ID,
-        client_secret: STRAVA_CLIENT_SECRET,
-        grant_type: 'refresh_token',
-        refresh_token: user.refresh_token,
-      }),
-    });
-
-    const data = await res.json();
-    if (!data?.access_token) return null;
-
-    // update supabase
-    await supabase
-      .from('strava_users')
-      .update({
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        expires_at: data.expires_at,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('athlete_id', user.athlete_id);
-
-    return data.access_token;
-  } catch (err) {
-    console.error('refresh token error', err);
-    return null;
+    console.log("✅ Sincronización + formateo completados");
+    return res
+      .status(200)
+      .send("✅ Actividades sincronizadas correctamente (formato Alameda automático)");
+  } catch (err: any) {
+    console.error("💥 Error general:", err.message);
+    return res.status(500).send("❌ Error interno: " + err.message);
   }
 }
