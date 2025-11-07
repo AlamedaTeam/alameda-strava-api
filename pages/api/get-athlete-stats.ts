@@ -28,13 +28,13 @@ export default async function handler(req, res) {
     sunday.setHours(23, 59, 59, 999)
 
     // Consulta actividades de esta semana
-    const { data, error } = await supabase
-      .from('alameda_activities')
-      .select('name, date, distance_km, elevation_gain_m, moving_time_min')
-      .eq('athlete_id', athlete_id)
-      .gte('date', monday.toISOString().split('T')[0])
-      .lte('date', sunday.toISOString().split('T')[0])
-      .order('date', { ascending: false })
+const { data, error } = await supabase
+  .from('alameda_activities')
+  .select('name, date::date, distance_km, elevation_gain_m, moving_time_min')
+  .eq('athlete_id', athlete_id)
+  .filter('date', 'gte', monday.toISOString().split('T')[0])
+  .filter('date', 'lte', sunday.toISOString().split('T')[0])
+  .order('date', { ascending: false })
 
     if (error) throw error
 
