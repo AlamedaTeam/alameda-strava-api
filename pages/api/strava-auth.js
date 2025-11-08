@@ -1,9 +1,9 @@
 export default async function handler(req, res) {
   try {
     const code = req.query.code;
-    if (!code) return res.status(400).send("❌ Autorización cancelada por el usuario.");
+    if (!code) return res.status(400).send("Falta el código de autorización.");
 
-    // === Intercambiar el 'code' por el 'access_token' en Strava ===
+    // Intercambiamos el "code" por los tokens de acceso
     const tokenResp = await fetch("https://www.strava.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -16,36 +16,31 @@ export default async function handler(req, res) {
     });
 
     const data = await tokenResp.json();
-    if (data.error) {
-      console.error("⚠️ Error con Strava:", data);
-      return res.status(400).json({ error: "Error con Strava", detalles: data });
-    }
+    if (data.errors) return res.status(400).json({ error: "Error con Strava", details: data });
 
-    // === Guardar o actualizar el atleta en Supabase ===
+    // Guardamos el atleta y los tokens en Supabase
     await fetch(`${process.env.SUPABASE_URL}/rest/v1/strava_users`, {
       method: "POST",
       headers: {
-        apikey: process.env.SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        "apikey": process.env.SUPABASE_ANON_KEY,
         "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates",
+        "Prefer": "resolution=merge-duplicates",
       },
       body: JSON.stringify({
         athlete_id: data.athlete.id,
-        username: data.athlete.username,
         firstname: data.athlete.firstname,
         lastname: data.athlete.lastname,
+        username: data.athlete.username || null,
         access_token: data.access_token,
         refresh_token: data.refresh_token,
         expires_at: data.expires_at,
       }),
     });
 
-    // === Redirigir al mensaje de éxito (temporal en Vercel) ===
-    return res.redirect(302, "https://alameda-strava-api.vercel.app/success");
-
+    // Redirige a página de éxito
+    return res.redirect(302, "/success");
   } catch (err) {
-    console.error("🔥 Error interno al conectar con Strava:", err);
+    console.error("🔥 Error interno Strava Auth:", err);
     res.status(500).json({ error: "Error interno al conectar con Strava" });
   }
 }
