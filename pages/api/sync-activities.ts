@@ -31,9 +31,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     for (const user of users) {
       console.log(`🔄 Sincronizando atleta ${user.athlete_id}`);
 
-      const response = await fetch("https://www.strava.com/api/v3/athlete/activities", {
-        headers: { Authorization: `Bearer ${user.access_token}` },
-      });
+      // 🕒 Traer actividades del último mes (incluye el día actual)
+      const after = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 30;
+
+      const response = await fetch(
+        `https://www.strava.com/api/v3/athlete/activities?after=${after}`,
+        {
+          headers: { Authorization: `Bearer ${user.access_token}` },
+        }
+      );
 
       if (!response.ok) {
         const text = await response.text();
