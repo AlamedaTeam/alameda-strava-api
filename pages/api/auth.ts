@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const STRAVA_CLIENT_ID = process.env.STRAVA_CLIENT_ID?.trim();
-    const redirectUri = encodeURI("https://app.alamedateam.com/api/strava-auth");
+    const redirectUri = encodeURI('https://alameda-strava-api.vercel.app/api/strava-auth');
 
     if (!STRAVA_CLIENT_ID) {
       console.error("❌ STRAVA_CLIENT_ID is missing");
