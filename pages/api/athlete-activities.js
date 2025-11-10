@@ -1,3 +1,4 @@
+// rebuild trigger
 export default async function handler(req, res) {
   try {
     const { athlete_id } = req.query;
