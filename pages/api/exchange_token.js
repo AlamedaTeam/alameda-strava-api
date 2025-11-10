@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 export default async function handler(req, res) {
   const { code, error } = req.query;
 
-  // Si Strava devuelve error
   if (error) {
     return res.status(400).json({ error: 'Access denied by user' });
   }
@@ -12,7 +11,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Llama al endpoint de Strava para intercambiar el code por tokens
+    // 🔍 Log para ver que llega el código
+    console.log('🔍 Llamando a Strava con el código:', code);
+
     const response = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -25,8 +26,10 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+    console.log('🔎 Respuesta de Strava:', data);
 
-    if (!response.ok) {
+    // Si Strava devuelve error, lo mostramos
+    if (!response.ok || data.errors) {
       return res.status(400).json({
         message: 'Authorization failed',
         data,
@@ -39,7 +42,7 @@ export default async function handler(req, res) {
       process.env.SUPABASE_KEY
     );
 
-    // Guarda o actualiza el token del atleta
+    // Guarda o actualiza el token
     const { error: upsertError } = await supabase
       .from(process.env.SUPABASE_TABLE)
       .upsert({
@@ -54,6 +57,8 @@ export default async function handler(req, res) {
 
     if (upsertError) throw upsertError;
 
+    console.log('✅ Token guardado correctamente para', data.athlete.firstname);
+
     return res.status(200).json({
       message: '✅ Token guardado correctamente en Supabase',
       athlete: `${data.athlete.firstname} ${data.athlete.lastname}`,
@@ -61,7 +66,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('❌ Error:', err);
+    console.error('❌ Error general:', err);
     return res.status(500).json({
       message: 'Internal Server Error',
       error: err.message,
