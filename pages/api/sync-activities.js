@@ -4,13 +4,13 @@ export default async function handler(req, res) {
   try {
     console.log('🔄 Iniciando sincronización de actividades desde Strava...');
 
-    // Conexión con Supabase
+    // Conexión a Supabase
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_KEY
     );
 
-    // 1️⃣ Obtenemos el token activo del atleta
+    // 1️⃣ Obtener token del atleta
     const { data: tokens, error: tokenError } = await supabase
       .from('athletes_tokens')
       .select('*')
@@ -24,9 +24,9 @@ export default async function handler(req, res) {
     const accessToken = tokens.access_token;
     console.log('✅ Token encontrado para:', tokens.firstname);
 
-    // 2️⃣ Petición a Strava API para obtener actividades
+    // 2️⃣ Pedir actividades a Strava
     const response = await fetch(
-      'https://www.strava.com/api/v3/athlete/activities?per_page=10',
+      'https://www.strava.com/api/v3/athlete/activities?per_page=50',
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -46,24 +46,39 @@ export default async function handler(req, res) {
 
     console.log(`📥 Recibidas ${activities.length} actividades`);
 
-    // 3️⃣ Guardamos o actualizamos las actividades en Supabase
-    const formatted = activities.map((a) => ({
-      activity_id: a.id,
-      name: a.name,
-      distance: a.distance,
-      moving_time: a.moving_time,
-      elapsed_time: a.elapsed_time,
-      total_elevation_gain: a.total_elevation_gain,
-      type: a.type,
-      start_date: a.start_date,
-      average_speed: a.average_speed,
-      max_speed: a.max_speed,
-      average_heartrate: a.average_heartrate || null,
-      max_heartrate: a.max_heartrate || null,
-      athlete_id: tokens.athlete_id,
-      updated_at: new Date().toISOString(),
-    }));
+    // 3️⃣ Formatear datos para Supabase
+    const formatted = activities.map((a) => {
+      const pace = a.average_speed ? (1000 / a.average_speed) / 60 : null; // min/km
+      const elevation = a.total_elevation_gain || 0;
 
+      return {
+        activity_id: a.id,
+        athlete_id: tokens.athlete_id,
+        name: a.name,
+        description: a.description || null,
+        type: a.type,
+        sport_type: a.sport_type || a.type,
+        distance: (a.distance / 1000).toFixed(2), // km
+        distance_km: (a.distance / 1000).toFixed(2),
+        moving_time: a.moving_time,
+        elapsed_time: a.elapsed_time,
+        elevation_gain: elevation,
+        elevation_m: `${elevation} m`,
+        average_speed: a.average_speed,
+        avg_speed_km: (a.average_speed * 3.6).toFixed(2), // km/h
+        pace_min_km: pace ? pace.toFixed(2) : null,
+        max_speed: a.max_speed,
+        average_heartrate: a.average_heartrate || null,
+        max_heartrate: a.max_heartrate || null,
+        start_date: a.start_date,
+        timezone: a.timezone || null,
+        platform: a.external_id ? (a.external_id.includes('Garmin') ? 'Garmin' : 'Strava') : 'Strava',
+        created_at: a.start_date_local || a.start_date,
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    // 4️⃣ Guardar o actualizar en Supabase
     const { error: upsertError } = await supabase
       .from('strava_activities')
       .upsert(formatted, { onConflict: 'activity_id' });
