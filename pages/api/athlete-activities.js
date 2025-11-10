@@ -3,15 +3,16 @@ export default async function handler(req, res) {
   try {
     const { athlete_id } = req.query;
 
-    // Usa tu token de Strava
+    // Usa token de Strava
     const accessToken = process.env.STRAVA_ACCESS_TOKEN;
     if (!accessToken) {
       return res.status(500).json({ error: "Falta STRAVA_ACCESS_TOKEN" });
     }
 
-    const r = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=50`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    const r = await fetch(
+      `https://www.strava.com/api/v3/athlete/activities?per_page=50`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
 
     if (!r.ok) {
       const txt = await r.text();
@@ -36,4 +37,3 @@ export default async function handler(req, res) {
     res.status(500).json({ error: "Error interno en la API", details: err.message });
   }
 }
-
