@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 export default async function handler(req, res) {
   const { code, error } = req.query;
 
+  // 🧩 Si el usuario deniega acceso o no hay código
   if (error) {
     return res.status(400).json({ error: 'Access denied by user' });
   }
@@ -11,24 +12,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔍 Log para ver que llega el código
     console.log('🔍 Llamando a Strava con el código:', code);
+
+    // 🧠 Strava requiere x-www-form-urlencoded, no JSON
+    const body = new URLSearchParams({
+      client_id: process.env.STRAVA_CLIENT_ID,
+      client_secret: process.env.STRAVA_CLIENT_SECRET,
+      code,
+      grant_type: 'authorization_code',
+    });
 
     const response = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: process.env.STRAVA_CLIENT_ID,
-        client_secret: process.env.STRAVA_CLIENT_SECRET,
-        code,
-        grant_type: 'authorization_code',
-      }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
     });
 
     const data = await response.json();
     console.log('🔎 Respuesta de Strava:', data);
 
-    // Si Strava devuelve error, lo mostramos
+    // ⚠️ Si Strava devuelve error, mostrarlo directamente
     if (!response.ok || data.errors) {
       return res.status(400).json({
         message: 'Authorization failed',
@@ -36,13 +39,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // Conecta con Supabase
+    // 🧩 Conexión con Supabase
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_KEY
     );
 
-    // Guarda o actualiza el token
+    // 💾 Guarda o actualiza el token del atleta
     const { error: upsertError } = await supabase
       .from(process.env.SUPABASE_TABLE)
       .upsert({
