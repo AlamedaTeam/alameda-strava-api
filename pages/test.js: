@@ -1,0 +1,8 @@
+export default function Test() {
+  return (
+    <div style={{padding:20, fontFamily:"system-ui"}}>
+      <h1>OK · Ruta funcionando</h1>
+      <p>Si ves esto, el problema no es Next ni el deploy, es el componente del dashboard.</p>
+    </div>
+  );
+}
