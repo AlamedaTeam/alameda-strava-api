@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
   try {
+    // 🔹 Conexión con Supabase
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
     // 🔹 Leer parámetros del query
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
     let query = supabase
       .from("strava_activities")
       .select("*")
-      .eq("athlete_id", athlete_id)
+      .eq("athlete_id", parseInt(athlete_id))  // 👈 cambio aquí
       .order("start_date", { ascending: false })
       .limit(limit);
 
@@ -24,10 +25,12 @@ export default async function handler(req, res) {
     if (from) query = query.gte("start_date", from);
     if (to) query = query.lte("start_date", to);
 
+    // 🔹 Ejecutar consulta
     const { data, error } = await query;
 
     if (error) throw error;
 
+    // 🔹 Respuesta OK
     res.status(200).json({
       message: "✅ Actividades obtenidas correctamente",
       total: data.length,
