@@ -1,14 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  pageExtensions: ['js', 'jsx', 'ts', 'tsx'],
   experimental: {
-    appDir: false, // 👈 Fuerza el modo pages
+    appDir: false, // 👈 fuerza modo pages
   },
   async redirects() {
     return [
       {
         source: '/',
-        destination: '/vip/dashboard',
+        destination: '/vip',
         permanent: false,
       },
     ];
