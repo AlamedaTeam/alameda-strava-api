@@ -59,49 +59,52 @@ export default async function handler(req, res) {
       const data = await resp.json();
       console.log(`📥 ${data.length} actividades recibidas de ${firstname}`);
 
-      // 4️⃣ Formatear a tu estructura exacta de Supabase
-      const formatted = data.map((a) => ({
-        athlete_id,
-        strava_id: a.id,
-        name: a.name,
-        sport_type: a.sport_type,
-        start_latlng: a.start_latlng ? JSON.stringify(a.start_latlng) : null,
-        end_latlng: a.end_latlng ? JSON.stringify(a.end_latlng) : null,
-        average_speed: a.average_speed ? (a.average_speed * 3.6).toFixed(2) : null, // m/s → km/h
-        average_heartrate: a.average_heartrate || null,
-        max_heartrate: a.max_heartrate || null,
-        elevation_gain: a.total_elevation_gain || null,
-        distance_km: (a.distance / 1000).toFixed(2),
-        moving_time_min: (a.moving_time / 60).toFixed(1),
+      // 4️⃣ Formatear estructura para Supabase
+      const formatted = data.map((a) => {
+        const elapsedSeconds = a.elapsed_time || 0;
+        const mins = Math.round(elapsedSeconds / 60);
+        let elapsedFormatted = `${mins} min`;
+        if (mins >= 60) {
+          const h = Math.floor(mins / 60);
+          const m = mins % 60;
+          elapsedFormatted = `${h}h ${m}min`;
+        }
 
-        // 🔥 Nuevo formato horas + minutos si supera 60 min
-        elapsed_time_min: (() => {
-          const mins = Math.round(a.elapsed_time / 60);
-          if (mins >= 60) {
-            const h = Math.floor(mins / 60);
-            const m = mins % 60;
-            return `${h}h ${m}min`;
-          }
-          return `${mins} min`;
-        })(),
+        return {
+          athlete_id,
+          strava_id: a.id,
+          name: a.name,
+          sport_type: a.sport_type,
+          start_latlng: a.start_latlng ? JSON.stringify(a.start_latlng) : null,
+          end_latlng: a.end_latlng ? JSON.stringify(a.end_latlng) : null,
+          average_speed: a.average_speed ? (a.average_speed * 3.6).toFixed(2) : null, // m/s → km/h
+          average_heartrate: a.average_heartrate || null,
+          max_heartrate: a.max_heartrate || null,
+          elevation_gain: a.total_elevation_gain || null,
+          distance_km: (a.distance / 1000).toFixed(2),
+          moving_time_min: (a.moving_time / 60).toFixed(1),
+          elapsed_time_min: elapsedFormatted,
+          pace_min_km:
+            a.average_speed && a.average_speed > 0
+              ? (1000 / (a.average_speed * 60)).toFixed(2)
+              : null,
+          start_date: a.start_date_local,
+          timezone: a.timezone || "(GMT+01:00) Europe/Madrid",
+          platform: "Strava",
+          created_at: new Date(a.start_date).toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+      });
 
-        pace_min_km:
-          a.average_speed && a.average_speed > 0
-            ? (1000 / (a.average_speed * 60)).toFixed(2)
-            : null,
-        start_date: a.start_date_local,
-        timezone: a.timezone || "(GMT+01:00) Europe/Madrid",
-        platform: "Strava",
-        created_at: new Date(a.start_date).toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
-
-      // 5️⃣ Borrar las más antiguas (mantener 20)
-      await supabase
-        .from("strava_activities")
-        .delete()
-        .lt("start_date", formatted[formatted.length - 1].start_date)
-        .eq("athlete_id", athlete_id);
+      // 5️⃣ Borrar actividades antiguas (mantener solo las 20 más recientes)
+      const lastDate = formatted[formatted.length - 1]?.start_date;
+      if (lastDate) {
+        await supabase
+          .from("strava_activities")
+          .delete()
+          .lt("start_date", lastDate)
+          .eq("athlete_id", athlete_id);
+      }
 
       // 6️⃣ Insertar o actualizar las nuevas
       const { error: upsertError } = await supabase
