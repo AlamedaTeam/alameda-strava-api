@@ -3,25 +3,29 @@ import dynamic from "next/dynamic";
 import Head from "next/head";
 import { useEffect, useState } from "react";
 
-export default function VipDashboard() {
+function VipDashboard() {
   const [metrics, setMetrics] = useState([]);
   const [resumen, setResumen] = useState(null);
   const [activities, setActivities] = useState([]);
   const athlete_id = 9194590; // 👈 tu ID actual
 
   useEffect(() => {
+    console.log("✅ Dashboard montado, cargando datos...");
+
     async function fetchAll() {
       try {
         // 🔹 1. Métricas globales
-        const metricsRes = await fetch(`https://alameda-strava-api.vercel.app/api/get-metrics?athlete_id=${athlete_id}`);
+        const metricsRes = await fetch(`/api/get-metrics?athlete_id=${athlete_id}`);
         const metricsJson = await metricsRes.json();
         setMetrics(metricsJson.data || []);
         setResumen(metricsJson.resumen || {});
 
         // 🔹 2. Últimas actividades
-        const actRes = await fetch(`https://alameda-strava-api.vercel.app/api/get-activities?athlete_id=${athlete_id}&limit=10`);
+        const actRes = await fetch(`/api/get-activities?athlete_id=${athlete_id}&limit=10`);
         const actJson = await actRes.json();
         setActivities(actJson.data || []);
+
+        console.log("📊 Datos cargados correctamente");
       } catch (err) {
         console.error("❌ Error al cargar datos:", err);
       }
@@ -116,3 +120,5 @@ function Card({ label, value }) {
     </div>
   );
 }
+
+export default dynamic(() => Promise.resolve(VipDashboard), { ssr: false });
