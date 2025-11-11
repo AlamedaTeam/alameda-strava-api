@@ -36,6 +36,7 @@ export default async function handler(req, res) {
             refresh_token,
           }),
         });
+
         const newData = await refreshRes.json();
         if (!refreshRes.ok) throw new Error('Error al refrescar token');
         token = newData.access_token;
@@ -51,12 +52,14 @@ export default async function handler(req, res) {
           .eq('athlete_id', athlete_id);
       }
 
-      // 🔁 Obtener TODAS las actividades del atleta (en páginas)
+      // 🔁 Obtener actividades de los últimos 15 días
+      const after = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60; // hace 15 días
       let allActivities = [];
       let page = 1;
+
       while (true) {
         const r = await fetch(
-          `https://www.strava.com/api/v3/athlete/activities?per_page=100&page=${page}`,
+          `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=100&page=${page}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const data = await r.json();
@@ -66,7 +69,7 @@ export default async function handler(req, res) {
         page++;
       }
 
-      console.log(`📥 ${allActivities.length} actividades recibidas de ${firstname}`);
+      console.log(`📥 ${allActivities.length} actividades recientes recibidas de ${firstname}`);
 
       // Formatear
       const formatted = allActivities.map((a) => ({
