@@ -1,8 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false,
-  swcMinify: true,
-  output: "standalone",
+  reactStrictMode: true,
+  experimental: {
+    appDir: false, // 👈 Fuerza el modo pages
+  },
+  async redirects() {
+    return [
+      {
+        source: '/',
+        destination: '/vip/dashboard',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
