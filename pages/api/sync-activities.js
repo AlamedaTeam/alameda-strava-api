@@ -73,7 +73,18 @@ export default async function handler(req, res) {
         elevation_gain: a.total_elevation_gain || null,
         distance_km: (a.distance / 1000).toFixed(2),
         moving_time_min: (a.moving_time / 60).toFixed(1),
-        elapsed_time_min: `${Math.round(a.elapsed_time / 60)} min`,
+
+        // 🔥 Nuevo formato horas + minutos si supera 60 min
+        elapsed_time_min: (() => {
+          const mins = Math.round(a.elapsed_time / 60);
+          if (mins >= 60) {
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            return `${h}h ${m}min`;
+          }
+          return `${mins} min`;
+        })(),
+
         pace_min_km:
           a.average_speed && a.average_speed > 0
             ? (1000 / (a.average_speed * 60)).toFixed(2)
