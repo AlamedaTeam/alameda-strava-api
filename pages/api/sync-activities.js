@@ -127,5 +127,6 @@ export default async function handler(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
-console.log("⚡ Sync actualizado versión 1.3");
+console.log("⚡ Sync actualizado versión 1.5");
+
 
