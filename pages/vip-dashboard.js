@@ -3,16 +3,28 @@ import { useEffect, useState } from "react";
 export default function VipDashboard() {
   const [metrics, setMetrics] = useState([]);
   const [resumen, setResumen] = useState(null);
+  const [activities, setActivities] = useState([]);
   const athlete_id = 9194590; // 👈 tu ID actual
 
   useEffect(() => {
-    async function fetchMetrics() {
-      const res = await fetch(`https://alameda-strava-api.vercel.app/api/get-metrics?athlete_id=${athlete_id}`);
-      const json = await res.json();
-      setMetrics(json.data || []);
-      setResumen(json.resumen || {});
+    async function fetchAll() {
+      try {
+        // 🔹 1. Métricas globales
+        const metricsRes = await fetch(`https://alameda-strava-api.vercel.app/api/get-metrics?athlete_id=${athlete_id}`);
+        const metricsJson = await metricsRes.json();
+        setMetrics(metricsJson.data || []);
+        setResumen(metricsJson.resumen || {});
+
+        // 🔹 2. Últimas actividades
+        const actRes = await fetch(`https://alameda-strava-api.vercel.app/api/get-activities?athlete_id=${athlete_id}&limit=10`);
+        const actJson = await actRes.json();
+        setActivities(actJson.data || []);
+      } catch (err) {
+        console.error("❌ Error al cargar datos:", err);
+      }
     }
-    fetchMetrics();
+
+    fetchAll();
   }, []);
 
   return (
@@ -30,7 +42,9 @@ export default function VipDashboard() {
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      {/* 🧩 Tabla de métricas históricas */}
+      <h2 className="text-xl font-semibold mb-3 text-amber-300">📊 Métricas recientes</h2>
+      <div className="overflow-x-auto mb-10">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-zinc-800 text-gray-300">
@@ -57,6 +71,23 @@ export default function VipDashboard() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* 🏃 Actividades de Strava */}
+      <h2 className="text-xl font-semibold mb-3 text-amber-300">🏃 Últimos entrenamientos</h2>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {activities.map((a) => (
+          <div key={a.id} className="bg-zinc-900 p-4 rounded-xl shadow border border-zinc-800 hover:border-amber-400 transition">
+            <h3 className="font-bold text-white mb-1">{a.name}</h3>
+            <p className="text-sm text-gray-400 mb-2">{new Date(a.start_date).toLocaleDateString("es-ES")}</p>
+            <div className="text-sm space-y-1">
+              <p>📏 {(a.distance / 1000).toFixed(1)} km</p>
+              <p>⏱️ {(a.moving_time / 60).toFixed(0)} min</p>
+              <p>⛰️ {a.total_elevation_gain || 0} m+</p>
+              <p>❤️ FC media: {a.average_heartrate || "--"} bpm</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
