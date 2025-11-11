@@ -2,129 +2,121 @@ import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
   try {
-    console.log('🔄 Iniciando sincronización de actividades desde Strava...');
+    console.log('🚀 Iniciando sincronización global de actividades Strava...');
 
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_KEY
     );
 
-    // 1️⃣ Obtener token del atleta
-    const { data: tokens, error: tokenError } = await supabase
+    // 1️⃣ Obtener todos los atletas con token en Supabase
+    const { data: athletes, error: fetchError } = await supabase
       .from('athletes_tokens')
-      .select('*')
-      .limit(1)
-      .maybeSingle();
+      .select('*');
 
-    if (tokenError || !tokens) throw new Error('No se encontró token activo en Supabase.');
-
-    let { access_token, refresh_token, expires_at } = tokens;
-    const now = Math.floor(Date.now() / 1000);
-
-    // 1.5️⃣ Refrescar token si está caducado
-    if (expires_at <= now) {
-      console.log('♻️ Token caducado. Renovando...');
-      const refreshResponse = await fetch('https://www.strava.com/oauth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: process.env.STRAVA_CLIENT_ID,
-          client_secret: process.env.STRAVA_CLIENT_SECRET,
-          grant_type: 'refresh_token',
-          refresh_token,
-        }),
-      });
-
-      const refreshData = await refreshResponse.json();
-      if (!refreshResponse.ok) throw new Error('Error al refrescar token');
-
-      access_token = refreshData.access_token;
-      refresh_token = refreshData.refresh_token;
-      expires_at = refreshData.expires_at;
-
-      await supabase
-        .from('athletes_tokens')
-        .update({
-          access_token,
-          refresh_token,
-          expires_at,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('athlete_id', tokens.athlete_id);
-
-      console.log('✅ Token renovado correctamente.');
+    if (fetchError || !athletes?.length) {
+      throw new Error('No hay atletas registrados o error al obtenerlos.');
     }
 
-    console.log('✅ Token válido para:', tokens.firstname);
+    console.log(`👥 Se encontraron ${athletes.length} atletas para sincronizar.`);
 
-    // 2️⃣ Pedir actividades a Strava
-    const response = await fetch(
-      'https://www.strava.com/api/v3/athlete/activities?per_page=50',
-      { headers: { Authorization: `Bearer ${access_token}` } }
-    );
+    // 2️⃣ Procesar cada atleta uno por uno
+    const results = [];
 
-    const activities = await response.json();
+    for (const athlete of athletes) {
+      const { athlete_id, firstname, access_token, refresh_token, expires_at } = athlete;
+      console.log(`⏳ Sincronizando actividades de ${firstname} (${athlete_id})...`);
 
-    if (!response.ok) {
-      console.error('❌ Error al obtener actividades:', activities);
-      return res.status(400).json({
-        message: 'Error al obtener actividades desde Strava',
-        data: activities,
-      });
-    }
+      let token = access_token;
+      const now = Math.floor(Date.now() / 1000);
 
-    console.log(`📥 Recibidas ${activities.length} actividades`);
+      // ♻️ Refrescar token si está caducado
+      if (expires_at <= now) {
+        console.log(`♻️ Token caducado para ${firstname}. Renovando...`);
+        const refreshResponse = await fetch('https://www.strava.com/oauth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: process.env.STRAVA_CLIENT_ID,
+            client_secret: process.env.STRAVA_CLIENT_SECRET,
+            grant_type: 'refresh_token',
+            refresh_token,
+          }),
+        });
 
-    // 3️⃣ Formatear datos para Supabase
-    const formatted = activities.map((a) => {
-      const pace = a.average_speed ? (1000 / a.average_speed) / 60 : null; // min/km
-      const elevation = a.total_elevation_gain || 0;
+        const refreshData = await refreshResponse.json();
+        if (!refreshResponse.ok) {
+          console.error(`❌ Error al refrescar token de ${firstname}:`, refreshData);
+          results.push({ athlete_id, firstname, status: '❌ Error refresh' });
+          continue;
+        }
 
-      return {
+        token = refreshData.access_token;
+
+        await supabase
+          .from('athletes_tokens')
+          .update({
+            access_token: token,
+            refresh_token: refreshData.refresh_token,
+            expires_at: refreshData.expires_at,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('athlete_id', athlete_id);
+
+        console.log(`✅ Token renovado para ${firstname}`);
+      }
+
+      // 3️⃣ Obtener actividades del atleta
+      const actResponse = await fetch(
+        'https://www.strava.com/api/v3/athlete/activities?per_page=50',
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const activities = await actResponse.json();
+      if (!actResponse.ok) {
+        console.error(`⚠️ Error al obtener actividades de ${firstname}:`, activities);
+        results.push({ athlete_id, firstname, status: '⚠️ Error Strava' });
+        continue;
+      }
+
+      // 4️⃣ Formatear actividades
+      const formatted = activities.map((a) => ({
         activity_id: a.id,
-        athlete_id: tokens.athlete_id,
+        athlete_id,
         name: a.name,
-        description: a.description || null,
-        type: a.type,
-        sport_type: a.sport_type || a.type,
-        distance: (a.distance / 1000).toFixed(2),
         distance_km: (a.distance / 1000).toFixed(2),
-        moving_time: a.moving_time,
-        elapsed_time: a.elapsed_time,
-        elevation_gain: elevation,
-        elevation_m: `${elevation} m`,
-        average_speed: a.average_speed,
-        avg_speed_km: (a.average_speed * 3.6).toFixed(2),
-        pace_min_km: pace ? pace.toFixed(2) : null,
-        max_speed: a.max_speed,
-        average_heartrate: a.average_heartrate || null,
-        max_heartrate: a.max_heartrate || null,
-        start_date: a.start_date,
-        timezone: a.timezone || null,
-        platform: a.external_id ? (a.external_id.includes('Garmin') ? 'Garmin' : 'Strava') : 'Strava',
+        elevation_gain: a.total_elevation_gain,
+        moving_time_min: (a.moving_time / 60).toFixed(1),
+        avg_hr: a.average_heartrate || null,
+        start_date: a.start_date_local || a.start_date,
         created_at: a.start_date_local || a.start_date,
         updated_at: new Date().toISOString(),
-      };
-    });
+      }));
 
-    // 4️⃣ Guardar o actualizar en Supabase
-    const { error: upsertError } = await supabase
-      .from('strava_activities')
-      .upsert(formatted, { onConflict: 'activity_id' });
+      // 5️⃣ Guardar/actualizar en Supabase
+      const { error: upsertError } = await supabase
+        .from('strava_activities')
+        .upsert(formatted, { onConflict: 'activity_id' });
 
-    if (upsertError) throw upsertError;
+      if (upsertError) {
+        console.error(`❌ Error guardando actividades de ${firstname}:`, upsertError);
+        results.push({ athlete_id, firstname, status: '❌ Error Supabase' });
+        continue;
+      }
 
-    console.log('✅ Actividades guardadas/actualizadas correctamente.');
+      console.log(`✅ Actividades sincronizadas para ${firstname}: ${formatted.length}`);
+      results.push({ athlete_id, firstname, total: formatted.length, status: '✅ OK' });
+    }
 
-    return res.status(200).json({
-      message: '✅ Actividades sincronizadas correctamente',
-      total: activities.length,
+    // 6️⃣ Resumen final
+    res.status(200).json({
+      message: 'Sincronización global completada ✅',
+      results,
     });
   } catch (err) {
     console.error('❌ Error general en sync-activities:', err);
-    return res.status(500).json({
-      message: 'Internal Server Error',
-      error: err.message,
-    });
+    res.status(500).json({ error: err.message });
   }
 }
