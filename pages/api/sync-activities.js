@@ -128,5 +128,3 @@ export default async function handler(req, res) {
   }
 }
 console.log("⚡ Sync actualizado versión 1.5");
-
-
