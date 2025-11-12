@@ -1,8 +1,16 @@
-export default function TestPage() {
+export default function TestVip() {
   return (
-    <div style={{ background: "black", color: "white", height: "100vh", padding: "40px" }}>
-      <h1>✅ RUTA INTERNA FUNCIONANDO</h1>
-      <p>Si ves esto, Next.js está leyendo correctamente las subrutas.</p>
+    <div style={{
+      background: "black",
+      color: "lime",
+      height: "100vh",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      fontFamily: "monospace",
+      fontSize: "22px"
+    }}>
+      ✅ Ruta /vip/test funcionando correctamente
     </div>
   );
 }
