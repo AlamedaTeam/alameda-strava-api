@@ -1,16 +1,16 @@
-export default function DashboardVip() {
+export default function DashboardVIP() {
   return (
     <div style={{
-      background: "black",
-      color: "cyan",
+      background: "#111",
+      color: "lime",
       height: "100vh",
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
       fontFamily: "monospace",
-      fontSize: "22px"
+      fontSize: "26px"
     }}>
-      Página /dashboard-vip funcionando 🔥
+      🔥 DASHBOARD VIP FUNCIONANDO – ANGEL PRESENTE 🔥
     </div>
   );
 }
