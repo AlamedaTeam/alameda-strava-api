@@ -2,7 +2,7 @@ export default function DashboardVip() {
   return (
     <div style={{
       background: "black",
-      color: "lime",
+      color: "cyan",
       height: "100vh",
       display: "flex",
       justifyContent: "center",
@@ -10,8 +10,7 @@ export default function DashboardVip() {
       fontFamily: "monospace",
       fontSize: "22px"
     }}>
-      ✅ Nueva ruta /dashboard-vip funcionando correctamente
+      Página /dashboard-vip funcionando 🔥
     </div>
   );
 }
-
