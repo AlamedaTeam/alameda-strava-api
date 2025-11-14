@@ -73,9 +73,9 @@ export default async function handler(req, res) {
 
     // 4️⃣ Redirigir a la zona VIP
     return res.redirect(
-      302,
-      "https://www.alamedatrailteam.com/pagina-en-blanco/?strava=ok"
-    );
+  302,
+  "https://www.alamedatrailteam.com/vip-atletas-team/?strava=ok"
+);
 
   } catch (err) {
     console.error("Error interno Strava Auth:", err);
