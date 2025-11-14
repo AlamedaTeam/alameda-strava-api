@@ -1,10 +1,16 @@
+import { createClient } from '@supabase/supabase-js';
+
 export default async function handler(req, res) {
   try {
-    const code = req.query.code;
-    if (!code) return res.status(400).send("Falta el código de autorización.");
+    const { code, state } = req.query;
 
-    // Intercambiamos el "code" por los tokens de acceso
-    const tokenResp = await fetch("https://www.strava.com/oauth/token", {
+    if (!code) return res.status(400).send("Falta el código de autorización.");
+    if (!state) return res.status(400).send("Falta el email (state).");
+
+    const email = state;
+
+    // 1️⃣ Intercambiar el código por tokens de Strava
+    const tokenRes = await fetch("https://www.strava.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -15,32 +21,57 @@ export default async function handler(req, res) {
       }),
     });
 
-    const data = await tokenResp.json();
-    if (data.errors) return res.status(400).json({ error: "Error con Strava", details: data });
+    const tokens = await tokenRes.json();
+    if (tokens.error) {
+      return res.status(400).json({
+        error: "Error en Strava",
+        details: tokens,
+      });
+    }
 
-    // Guardamos el atleta y los tokens en Supabase
-    await fetch(`${process.env.SUPABASE_URL}/rest/v1/strava_users`, {
-      method: "POST",
-      headers: {
-        "apikey": process.env.SUPABASE_ANON_KEY,
-        "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates",
-      },
-      body: JSON.stringify({
-        athlete_id: data.athlete.id,
-        firstname: data.athlete.firstname,
-        lastname: data.athlete.lastname,
-        username: data.athlete.username || null,
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        expires_at: data.expires_at,
-      }),
-    });
+    const {
+      access_token,
+      refresh_token,
+      expires_at,
+      athlete
+    } = tokens;
 
-    // Redirige a página de éxito
-    return res.redirect(302, "/success");
+    // 2️⃣ Conectar con Supabase
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE // Necesario para upsert
+    );
+
+    // 3️⃣ Guardar tokens en tu tabla nueva
+    const { error } = await supabase
+      .from("athletes_tokens")
+      .upsert({
+        email: email,
+        athlete_id: athlete.id,
+        firstname: athlete.firstname,
+        lastname: athlete.lastname,
+        access_token: access_token,
+        refresh_token: refresh_token,
+        expires_at: expires_at,
+        updated_at: new Date().toISOString(),
+      });
+
+    if (error) {
+      console.error("Supabase error:", error);
+      return res.status(500).json({ error: "Error guardando en Supabase" });
+    }
+
+    // 4️⃣ Redirigir al panel VIP
+    return res.redirect(
+      302,
+      "https://www.alamedatrailteam.com/pagina-en-blanco/?strava=ok"
+    );
+
   } catch (err) {
-    console.error("🔥 Error interno Strava Auth:", err);
-    res.status(500).json({ error: "Error interno al conectar con Strava" });
+    console.error("Error interno Strava Auth:", err);
+    res.status(500).json({
+      error: "Error interno en Strava Auth",
+      details: err,
+    });
   }
 }
