@@ -58,8 +58,8 @@ export default async function handler(req, res) {
           updated_at: new Date().toISOString(),
         },
         {
-          onConflict: "athlete_id",   // 👈 CLAVE ÚNICA REAL
-          returning: "minimal"        // 👈 Supabase recomienda esto
+          onConflict: "athlete_id",
+          returning: "minimal"
         }
       );
 
@@ -73,9 +73,9 @@ export default async function handler(req, res) {
 
     // 4️⃣ Redirigir a la zona VIP
     return res.redirect(
-  302,
-  return res.redirect("https://www.alamedatrailteam.com/pagina-en-blanco/?strava=ok");
-);
+      302,
+      "https://www.alamedatrailteam.com/pagina-en-blanco/?strava=ok"
+    );
 
   } catch (err) {
     console.error("Error interno Strava Auth:", err);
