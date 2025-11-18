@@ -1,37 +1,62 @@
-// /pages/api/get-activities.js
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req, res) {
+  // CORS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") return res.status(200).end();
+
   try {
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-
-    const { athlete_id, sport_type, limit = 20, from, to } = req.query;
-
-    if (!athlete_id) {
-      return res.status(400).json({ error: "❌ Falta el parámetro 'athlete_id'" });
+    const email = (req.query.email || "").trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ error: "Falta email." });
     }
 
-    let query = supabase
-      .from("strava_activities")
+    // Conectar a Supabase
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE
+    );
+
+    // Buscar tokens del atleta
+    const { data: tokenRow, error: tokenError } = await supabase
+      .from("strava_tokens")
       .select("*")
-      .eq("athlete_id", athlete_id) // 👈 sin parseInt si en Supabase es TEXT
-      .order("start_date", { ascending: false })
-      .limit(Number(limit));
+      .eq("email", email)
+      .single();
 
-    if (sport_type) query = query.eq("sport_type", sport_type);
-    if (from) query = query.gte("start_date", from);
-    if (to) query = query.lte("start_date", to);
+    if (tokenError || !tokenRow) {
+      return res.status(404).json({ error: "No hay tokens para este usuario." });
+    }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    // Petición a Strava
+    const activitiesRes = await fetch(
+      "https://www.strava.com/api/v3/athlete/activities?per_page=30",
+      {
+        headers: {
+          Authorization: `Bearer ${tokenRow.access_token}`,
+        },
+      }
+    );
 
-    res.status(200).json({
-      message: "✅ Actividades obtenidas correctamente",
-      total: data.length,
-      data,
+    const activities = await activitiesRes.json();
+
+    if (!activitiesRes.ok) {
+      return res.status(400).json({ error: "Strava rechazó el token.", details: activities });
+    }
+
+    // Éxito
+    return res.status(200).json({
+      ok: true,
+      activities
     });
-  } catch (err) {
-    console.error("❌ Error en get-activities:", err);
-    res.status(500).json({ error: err.message });
+
+  } catch (e) {
+    return res.status(500).json({
+      error: "Error interno",
+      details: e.message,
+    });
   }
 }
