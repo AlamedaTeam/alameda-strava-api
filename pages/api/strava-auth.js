@@ -1,15 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
-  const { code, state, error } = req.query; // 'state' lleva el email que enviamos desde el front
+  const { code, state, error } = req.query;
 
-  // 1. Manejo de errores o cancelación
+  // 1. Si el usuario cancela o hay error en Strava
   if (error || !code) {
+    console.error('Error recibido de Strava:', error);
     return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=strava_cancel');
   }
 
   try {
-    // 2. Intercambiar el 'code' por tokens reales con Strava
+    // 2. Pedir las llaves definitivas a Strava
+    console.log('Intercambiando código por token...');
+    
     const tokenResponse = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -23,45 +26,45 @@ export default async function handler(req, res) {
 
     const tokens = await tokenResponse.json();
 
+    // Si Strava nos da error aquí, es por el CLIENT_SECRET o el DOMINIO
     if (tokens.errors) {
-      throw new Error('Error solicitando tokens a Strava');
+      console.error('Strava rechazó el intercambio:', JSON.stringify(tokens));
+      return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=strava_rejected');
     }
 
-    // 3. Guardar en Supabase
-    // Usamos el email que viaja en 'state' para saber de quién son estos tokens
-    // NOTA: Si el 'state' viniera codificado, habría que usar decodeURIComponent, pero suele llegar bien.
-    const userEmail = state ? state.toLowerCase() : null;
-
-    if (!userEmail) {
-      throw new Error('No se recibió el email del usuario en la petición');
-    }
+    // 3. Guardar en Base de Datos (Supabase)
+    console.log('Guardando en Supabase para:', state);
+    
+    // El 'state' trae el email del usuario (lo enviamos desde el frontend)
+    // Si viene vacío, intentamos usar el ID de atleta como fallback, pero lo ideal es el email.
+    const userEmail = state ? state.toLowerCase() : `unknown_athlete_${tokens.athlete.id}`;
 
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_KEY
     );
 
-    // Guardamos o actualizamos (upsert)
     const { error: dbError } = await supabase
       .from('strava_tokens')
       .upsert({
         email: userEmail,
+        athlete_id: tokens.athlete.id,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expires_at: tokens.expires_at,
-        athlete_id: tokens.athlete.id,
         updated_at: new Date().toISOString()
       }, { onConflict: 'email' });
 
-    if (dbError) throw dbError;
+    if (dbError) {
+      console.error('Error guardando en BD:', dbError);
+      return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=db_save_error');
+    }
 
-    // 4. ¡Éxito! Redirigimos de vuelta a la web
-    // NOTA: Te mando a /pruebas/ porque es donde estamos testeando.
-    // Cuando pases a producción, cambia esto a /vip-atletas/
+    // 4. Todo perfecto -> Volver a la web
     return res.redirect('https://www.alamedatrailteam.com/pruebas/?status=connected');
 
   } catch (err) {
-    console.error('Strava Auth Error:', err);
-    return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=server_error');
+    console.error('Error crítico del servidor:', err);
+    return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=server_crash');
   }
 }
