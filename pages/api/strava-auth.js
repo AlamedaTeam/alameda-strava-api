@@ -3,44 +3,36 @@ import { createClient } from '@supabase/supabase-js';
 export default async function handler(req, res) {
   const { code, state, error } = req.query;
 
-  // 1. Control de errores inicial
+  // 1. Si el usuario cancela en Strava
   if (error || !code) {
-    console.error('Error recibido de Strava:', error);
     return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=strava_cancel');
   }
 
   try {
-    // 2. DEBUG: Verificamos que las variables existen (sin mostrar el secreto)
-    if (!process.env.STRAVA_CLIENT_ID || !process.env.STRAVA_CLIENT_SECRET) {
-      console.error('FALTAN VARIABLES DE ENTORNO EN VERCEL');
-      return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=config_error');
-    }
-
-    // 3. Intercambio de tokens (CAMBIO: Usamos parámetros en URL en vez de JSON)
-    console.log('Solicitando tokens a Strava...');
+    // 2. Intercambio de Tokens (MÉTODO INFALIBLE: URL PARAMS)
+    // En lugar de enviar un JSON, construimos la URL con los datos.
+    // Esto evita problemas de formato que a veces dan el error "invalid".
     
-    const params = new URLSearchParams({
-      client_id: process.env.STRAVA_CLIENT_ID,
-      client_secret: process.env.STRAVA_CLIENT_SECRET,
-      code: code,
-      grant_type: 'authorization_code'
-    });
+    const clientId = process.env.STRAVA_CLIENT_ID;
+    const clientSecret = process.env.STRAVA_CLIENT_SECRET;
 
-    const tokenResponse = await fetch(`https://www.strava.com/oauth/token?${params.toString()}`, {
-      method: 'POST'
+    const tokenUrl = `https://www.strava.com/oauth/token?client_id=${clientId}&client_secret=${clientSecret}&code=${code}&grant_type=authorization_code`;
+
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST' 
     });
 
     const tokens = await tokenResponse.json();
 
-    // Si falla aquí, Strava nos dirá por qué en los logs
-    if (tokens.errors || !tokens.access_token) {
-      console.error('Respuesta de Strava (Error):', JSON.stringify(tokens));
+    // Si Strava sigue quejándose, lo veremos en los logs de Vercel
+    if (tokens.errors) {
+      console.error('Respuesta de Strava:', JSON.stringify(tokens));
       return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=strava_rejected');
     }
 
-    // 4. Guardar en Supabase
-    const userEmail = state ? state.toLowerCase() : `unknown_${tokens.athlete.id}`;
-    console.log('Guardando tokens para:', userEmail);
+    // 3. Guardar en Supabase
+    // Usamos el email que viaja en 'state'. Si no hay, usamos el ID de atleta.
+    const userEmail = state ? state.toLowerCase() : `strava_${tokens.athlete.id}`;
 
     const supabase = createClient(
       process.env.SUPABASE_URL,
@@ -63,11 +55,11 @@ export default async function handler(req, res) {
       return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=db_save_error');
     }
 
-    // 5. Éxito total
+    // 4. Éxito
     return res.redirect('https://www.alamedatrailteam.com/pruebas/?status=connected');
 
   } catch (err) {
-    console.error('Excepción del servidor:', err);
+    console.error('Error Servidor:', err);
     return res.redirect('https://www.alamedatrailteam.com/pruebas/?error=server_crash');
   }
 }
